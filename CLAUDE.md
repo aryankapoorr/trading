@@ -89,20 +89,18 @@ EXIT (sell the entire leveraged ETF position) — ANY triggers it:
 HOLD otherwise.
 
 ## Required procedure each run
-0. GUARD: Check the current time (ET). If it is outside 7:00am–8:00pm ET on a
-   weekday, print `Outside trading hours — no action.` and STOP.
-   Determine the current session (pre-market / regular / after-hours) and log it.
 1. Call get_portfolio + get_equity_positions for `949029094` to learn settled
    cash, equity, and current holdings.
 2. For each underlying (QQQ, SPY, XLK, SMH, IWM, XLF, XLE, XBI, KRE): fetch
    history, compute SMA10/SMA30 + RSI14, get current live quote.
 3. Print a table: underlying | leveraged ETF | price | SMA10 | SMA30 | RSI14 |
    signal (BUY / SELL / HOLD) | reason. Always show this — it is the audit trail.
-4. For each BUY/SELL: call get_equity_tradability to confirm the symbol supports
-   the current session. Then call review_equity_order, print the review, then
-   call place_equity_order with the correct order type for the session.
-5. Summarize: session type, orders placed, orders skipped and why,
-   end-of-run cash/positions.
+4. For each BUY/SELL: call get_equity_tradability for the leveraged ETF symbol.
+   If not tradable in the current session, log it and skip. Otherwise call
+   review_equity_order, print the review, then place_equity_order with the
+   correct order type for the session (market during regular hours, limit
+   at ask/bid during pre-market and after-hours).
+5. Summarize: orders placed, orders skipped and why, end-of-run cash/positions.
 
 ## Hard don'ts
 - No margin, no shorting, no options, no crypto.
