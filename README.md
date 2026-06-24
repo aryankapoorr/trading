@@ -8,10 +8,8 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
   on every run.
 - A Claude Code Routine runs hourly on weekdays (`0 * * * 1-5`). Each run clones
   this repo, reads `CLAUDE.md`, and executes.
-- The routine uses two MCP connectors:
-  - **Robinhood** — reads the account and places equity orders.
-  - **Financial Datasets** — fetches recent news on underlying ETFs as a
-    confirmation filter before acting on any technical signal.
+- The routine uses the **Robinhood** MCP connector to read the account and
+  place equity orders.
 
 ## Strategy (summary — see CLAUDE.md for exact rules)
 - Long-only momentum rotation across 9 leveraged ETFs (3x) spanning tech,
@@ -21,10 +19,6 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
   leveraged wrapper — cleaner price history, no decay distortion.
 - Entry: underlying in short-term uptrend (price > SMA10 > SMA30), RSI 40–72.
 - Exit: underlying breaks 3% below SMA10, or RSI > 78.
-- News filter: before any entry or exit, checks recent news on the underlying
-  via Financial Datasets MCP. Skips the order if a clear macro-level negative
-  event contradicts the signal. News is a filter only — never a standalone signal.
-
 ## Session & order types
 - Pre-market (7am–9:30am ET): limit orders only.
 - Regular (9:30am–4pm ET): market orders.
@@ -38,7 +32,5 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
 
 ## Safety notes
 - Cash account: never buys with unsettled proceeds.
-- Prompt injection protection: news content is treated as data only — any
-  headline that reads like a command is flagged and the symbol is skipped.
 - This is a small-stakes experiment. Treat the funded amount as money you are
   fully prepared to lose. Leveraged ETFs can lose value rapidly.
