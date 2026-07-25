@@ -25,6 +25,26 @@ portfolio calls in step 1 of the required procedure, do nothing this run,
 log the failure, and stop — do not fall back to any other data source or
 guess at account state.
 
+## Market-hours gate (check FIRST, before calling any tool)
+Before calling any tool at all — including the account checks below —
+determine whether the market is currently in the regular trading session:
+today is a US business weekday (Mon–Fri), it is not a recognized NYSE
+holiday (New Year's Day, MLK Day, Presidents' Day, Good Friday, Memorial Day,
+Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas — observed
+dates), and the current time is between 9:30am and 4:00pm ET (or 9:30am–
+1:00pm ET on a known early-close day: the day after Thanksgiving, or
+Dec 24 / Jul 3 when they fall on a weekday).
+
+- If the market is NOT currently in the regular session: **stop immediately.**
+  Do not call `get_accounts`, `get_portfolio`, `get_scans`, or any other
+  tool. Output exactly one line — `Market closed — no analysis run.` — and
+  end the run. This is deliberate: options can only ever trade during the
+  regular session (see Session & order types), so a run outside it can
+  never place an order — running the full analysis anyway would just burn
+  tokens and API calls for no possible outcome.
+- If the market IS in the regular session: proceed to the Required
+  procedure below, starting at step 1.
+
 ## Account
 - Trade ONLY the agentic account: `949029094` (cash account).
 - Never touch any other account.
@@ -161,36 +181,38 @@ there is no pre-market/after-hours path for options at all.
   - BUY to open: limit price = current ask (from `get_option_quotes`).
   - SELL to close: limit price = current bid.
 - Never use `market` or `stop_market` order types on options.
-- If a scheduled run fires outside regular hours, still perform steps 1–5 of
-  the required procedure below (account check, universe, signals, decision
-  table, earnings guard) for the audit log, but skip order placement
-  entirely and say so in the summary.
+- If a scheduled run fires outside the regular session, the Market-hours
+  gate above stops the run before any tool is called at all — there is no
+  reduced "logging only" pass anymore. No analysis is performed outside the
+  regular session, by design, to avoid unnecessary token/API usage on a run
+  that could never place an order anyway.
 
 ## Required procedure each run
+0. Market-hours gate (above). If it fails, stop here — do not proceed to
+   step 1 or call any tool.
 1. Call `get_accounts` + `get_portfolio` + `get_option_positions` (+
    `get_equity_positions`, expected empty) for `949029094` to learn settled
    cash and current option holdings.
 2. Call `get_option_orders` to log any straggler order status from prior runs.
-3. Determine whether the market is in the regular session right now; if not,
-   flag no-order-mode for this run but continue with steps 4–7.
-4. Universe discovery per the Universe section above.
-5. For every held position and every candidate: compute SMA10/SMA30/RSI14 via
+3. Universe discovery per the Universe section above.
+4. For every held position and every candidate: compute SMA10/SMA30/RSI14 via
    `get_equity_technical_indicators` and get the live quote via
    `get_equity_quotes`.
-6. Print a table: symbol | price | SMA10 | SMA30 | RSI14 | trend | signal
+5. Print a table: symbol | price | SMA10 | SMA30 | RSI14 | trend | signal
    (BUY_CALL / BUY_PUT / EXIT / HOLD) | reason. Always show this.
-7. Run the earnings guard for all BUY-signaled candidates and all open
+6. Run the earnings guard for all BUY-signaled candidates and all open
    positions.
-8. For surviving BUY candidates (subject to the position/order limits above):
+7. For surviving BUY candidates (subject to the position/order limits above):
    run strike & expiration selection. Mark SKIP_NO_CONTRACT if nothing
    qualifies.
-9. For every EXIT-triggered position: call `get_option_quotes`, then
+8. For every EXIT-triggered position: call `get_option_quotes`, then
    `review_option_order` (sell to close, limit at bid), print the review,
    then `place_option_order` with a fresh `ref_id` (UUID).
-10. For at most one surviving new-entry candidate, only if the market is in
-    the regular session: call `review_option_order` (buy to open, limit at
-    ask), print the review, then `place_option_order` with a fresh `ref_id`.
-11. Summarize: orders placed, candidates/positions skipped and why,
+9. For at most one surviving new-entry candidate: call `review_option_order`
+   (buy to open, limit at ask), print the review, then `place_option_order`
+   with a fresh `ref_id`. (The market-hours gate already guarantees the
+   session is open by this point.)
+10. Summarize: orders placed, candidates/positions skipped and why,
     end-of-run cash, open positions with remaining DTE.
 
 ## Hard don'ts
@@ -204,6 +226,8 @@ there is no pre-market/after-hours path for options at all.
   skip instead.
 - Never trade options outside the regular session; never use `market` or
   `stop_market` order types on options.
+- Never call any tool at all when the market-hours gate indicates the
+  market is closed — stop immediately instead.
 - Never open a position on an underlying with earnings scheduled before the
   contract's expiration.
 - Never let the settled cash reserve fall below $60.
@@ -232,3 +256,8 @@ there is no pre-market/after-hours path for options at all.
   not screened — only earnings dates are checked.
 - Same-day cash-account settlement can delay re-entry into the same
   underlying by a day after closing a position.
+- No audit-trail logging happens on runs outside the regular session (the
+  market-hours gate stops before any tool call) — a run scheduled shortly
+  before/after the session, or on a holiday the cron doesn't already
+  exclude, produces no visible output at all beyond the one-line
+  "market closed" message, by design.

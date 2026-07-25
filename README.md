@@ -36,8 +36,11 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
 - Options don't support extended-hours trading — orders only place during
   the regular session (9:30am–4pm ET), always as limit orders (ask for buys,
   bid for sells).
-- Outside regular hours, the routine still logs the full decision table but
-  places no orders.
+- Outside regular hours, a market-hours gate stops the run before any tool
+  is called at all — no account check, no analysis, no decision table.
+  Since options can never place outside the session anyway, there's nothing
+  useful to compute, so this avoids burning tokens/API calls on a run that
+  couldn't act.
 
 ## Audit trail
 - Each run's full output (decision table + earnings checks + order reviews) is
