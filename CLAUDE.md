@@ -86,11 +86,11 @@ scans).
 ## Sizing & limits
 - Cash reserve floor: **$60**, always kept uninvested.
 - Deployable capital = live `get_portfolio` cash minus $60. Recompute every run.
-- Max concurrent option positions: **3**.
-- Max new opening orders per run: **1** (forces a fresh account/cash check
+- Max concurrent option positions: **10**.
+- Max new opening orders per run: **5** (forces a fresh account/cash check
   between each new opening — deliberate throttle against data-error fan-out,
   independent of how many slots are open).
-- Target spend per contract: **$150–250**. Hard ceiling: **$260**.
+- Target spend per contract: **$150–400**. Hard ceiling: **$750**.
 - Funding target: to comfortably support 3 concurrent positions even if all
   three land near the ceiling, total account value should be at least
   3 x $260 + $60 reserve = **$840**; fund somewhat above that (~$900–1,000)
