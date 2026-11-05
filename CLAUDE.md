@@ -90,7 +90,7 @@ scans).
 - Max new opening orders per run: **5** (forces a fresh account/cash check
   between each new opening — deliberate throttle against data-error fan-out,
   independent of how many slots are open).
-- Target spend per contract: **$150–400**. Hard ceiling: **$750**.
+- Target spend per contract: **$150–350**. Hard ceiling: **$500**.
 - Funding target: to comfortably support 3 concurrent positions even if all
   three land near the ceiling, total account value should be at least
   3 x $260 + $60 reserve = **$840**; fund somewhat above that (~$900–1,000)
