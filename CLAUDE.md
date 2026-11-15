@@ -83,22 +83,59 @@ scans).
 6. Your working candidate list for the run = scan results (capped at 15) +
    the fixed ETF anchor list, deduplicated.
 
-## Sizing & limits
-- Cash reserve floor: **$60**, always kept uninvested.
-- Deployable capital = live `get_portfolio` cash minus $60. Recompute every run.
-- Max concurrent option positions: **10**.
-- Max new opening orders per run: **5** (forces a fresh account/cash check
-  between each new opening — deliberate throttle against data-error fan-out,
-  independent of how many slots are open).
-- Target spend per contract: **$150–350**. Hard ceiling: **$500**.
-- Funding target: to comfortably support 3 concurrent positions even if all
-  three land near the ceiling, total account value should be at least
-  3 x $260 + $60 reserve = **$840**; fund somewhat above that (~$900–1,000)
-  for headroom rather than exactly at the floor.
-- Never force a 2nd or 3rd position if it would breach the reserve floor or
-  the per-contract ceiling — skip instead. If account value is currently
-  below the funding target, expect to hold fewer than 3 positions; that's
-  expected, not a bug.
+## Sizing & limits (dynamic — scale with account value)
+All limits below are computed from the live account value at the start of
+every run, and recomputed (fresh `get_portfolio`) before every new opening
+order. These computed values are THE limits referenced everywhere else in
+this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
+
+**Inputs (from `get_portfolio` for `949029094`):**
+- `E` = `total_value` (cash + market value of open options).
+- Sanity check: if `total_value`, `cash`, or `options_value` is missing,
+  non-numeric, or `total_value` differs from `cash + options_value` by more
+  than 5%, treat account data as unreliable: run EXITs only, open nothing
+  new this run, and log why.
+
+**Formulas (round dollar amounts down to the nearest dollar):**
+| Limit | Formula | Absolute bounds |
+|---|---|---|
+| `R` cash reserve floor | max($60, 5% x E) | never below $60 |
+| `P` max ask x 100 for one contract | 15% x E | clamp to [$260, $500] |
+| `B` max cost for one position | 15% x E | at least `P` (so 1 contract always fits) |
+| `N` max concurrent option positions | floor(E / $300) | clamp to [3, 10] |
+| `X` max total open option exposure | 75% x E | — |
+| `K` max new opening orders per run | floor(N / 3) | clamp to [1, 3] |
+| `D` max new opening orders per trading day | 2 x K | never above 6 |
+
+**Worked examples:**
+| Account value `E` | `R` | `P` | `B` | `N` | `X` | `K` | `D` |
+|---|---|---|---|---|---|---|---|
+| $1,000 | $60 | $260 | $260 | 3 | $750 | 1 | 2 |
+| $2,000 | $100 | $300 | $300 | 6 | $1,500 | 2 | 4 |
+| $5,000 | $250 | $500 | $750 | 10 | $3,750 | 3 | 6 |
+| $10,000 | $500 | $500 | $1,500 | 10 | $7,500 | 3 | 6 |
+
+**How each limit is applied:**
+- Deployable cash for a new opening = live `buying_power.buying_power` from
+  `get_portfolio` (settled, spendable; excludes unsettled sale proceeds on
+  this cash account) minus `R`. A new order's total cost (ask x 100 x
+  quantity) must not exceed it.
+- Exposure: current `options_value` + the new order's total cost must be
+  <= `X`. (Uses market value, not cost basis, so winners count in full.)
+- Quantity: buy `q` = floor(`B` / (ask x 100)) contracts, minimum 1, maximum
+  5, and further reduced until the cost fits the deployable-cash and
+  exposure checks above. If even 1 contract doesn't fit, skip.
+- Positions: open a new position only while open option positions < `N`.
+- Per run: at most `K` new opening orders. Before each one after the first,
+  call `get_portfolio` + `get_option_positions` again and recompute every
+  limit — deliberate throttle against data-error fan-out.
+- Per day: count today's buy-to-open orders in `get_option_orders` (filled,
+  queued, or partially filled; ignore cancelled/rejected). Open nothing more
+  once that count reaches `D`.
+- Never force a position to hit a count — the limits are caps, not targets.
+  If the account shrinks, the limits shrink with it on the next run;
+  existing positions over a shrunken `N` are NOT force-closed, they just
+  block new openings until normal exits bring the count back under `N`.
 
 ## Indicators (compute from the underlying)
 For each candidate and each currently-held underlying, call
@@ -114,7 +151,9 @@ ENTRY — BUY_CALL (open a new long call) — ALL must be true:
 2. Price > SMA10 AND SMA10 > SMA30 (short-term uptrend confirmed).
 3. 45 <= RSI14 <= 70 (momentum present, not extreme).
 4. Passes the earnings guard (below).
-5. Open option positions < 3.
+5. Open option positions < `N`, new openings this run < `K`, new openings
+   today < `D`, and the order fits the deployable-cash and exposure (`X`)
+   checks in Sizing & limits.
 6. A qualifying contract exists under the strike/expiration rules below —
    otherwise skip this candidate.
 
@@ -154,11 +193,12 @@ HOLD otherwise.
 2. Delta target band: **0.35–0.55** (absolute value), search starting from
    the strike nearest 0.45 delta for calls, -0.45 for puts.
 3. Budget check: get the ask price for that strike via `get_option_quotes`.
-   - If ask x 100 is within $150–250 and delta is within [0.35, 0.55]: take it.
-   - If ask x 100 > $260: step one strike further out-of-the-money at a
+   `P` is the per-contract ceiling computed in Sizing & limits this run.
+   - If ask x 100 is within $150–`P` and delta is within [0.35, 0.55]: take it.
+   - If ask x 100 > `P`: step one strike further out-of-the-money at a
      time, rechecking ask and delta at each step. Stop and take the first
-     strike where ask x 100 <= $260 AND delta >= 0.25. If delta would drop
-     below 0.25 before price falls to $260, or after 5 steps with no
+     strike where ask x 100 <= `P` AND delta >= 0.25. If delta would drop
+     below 0.25 before price falls to `P`, or after 5 steps with no
      success, **skip this candidate** — never buy a sub-0.25-delta contract
      just to hit a price target.
    - If the 0.45-delta strike's ask x 100 is already under $150 (cheap,
@@ -169,6 +209,9 @@ HOLD otherwise.
    > 10%, prefer the next-nearest strike or expiration, or skip — the
    universe-level liquidity filters don't guarantee every individual OTM
    strike stays tight.
+5. Quantity: once the contract is chosen, size the order per the Quantity
+   rule in Sizing & limits (floor(`B` / (ask x 100)), 1–5 contracts, cut down
+   to fit deployable cash and `X`).
 
 ## Session & order types
 Options on individual stocks/ETFs do NOT support extended-hours trading
@@ -192,8 +235,10 @@ there is no pre-market/after-hours path for options at all.
    step 1 or call any tool.
 1. Call `get_accounts` + `get_portfolio` + `get_option_positions` (+
    `get_equity_positions`, expected empty) for `949029094` to learn settled
-   cash and current option holdings.
-2. Call `get_option_orders` to log any straggler order status from prior runs.
+   cash and current option holdings. Compute and print this run's limits
+   (`E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`) per Sizing & limits.
+2. Call `get_option_orders` to log any straggler order status from prior
+   runs, and count today's buy-to-open orders against `D`.
 3. Universe discovery per the Universe section above.
 4. For every held position and every candidate: compute SMA10/SMA30/RSI14 via
    `get_equity_technical_indicators` and get the live quote via
@@ -208,10 +253,14 @@ there is no pre-market/after-hours path for options at all.
 8. For every EXIT-triggered position: call `get_option_quotes`, then
    `review_option_order` (sell to close, limit at bid), print the review,
    then `place_option_order` with a fresh `ref_id` (UUID).
-9. For at most one surviving new-entry candidate: call `review_option_order`
-   (buy to open, limit at ask), print the review, then `place_option_order`
-   with a fresh `ref_id`. (The market-hours gate already guarantees the
-   session is open by this point.)
+9. For up to `K` surviving new-entry candidates, one at a time, in the order
+   they appear in the step 5 table: refresh `get_portfolio` +
+   `get_option_positions` and recompute the limits (skip the refresh for
+   the first one, step 1 is fresh), confirm the candidate still fits every
+   limit, call `review_option_order` (buy to open, limit at ask, quantity
+   per Sizing & limits), print the review, then `place_option_order` with a
+   fresh `ref_id`. Stop early once any limit is reached. (The market-hours
+   gate already guarantees the session is open by this point.)
 10. Summarize: orders placed, candidates/positions skipped and why,
     end-of-run cash, open positions with remaining DTE.
 
@@ -221,16 +270,20 @@ there is no pre-market/after-hours path for options at all.
 - No selling options at all beyond closing a long position you already
   hold — no covered calls, no cash-secured puts, no sell-to-open, ever.
 - No margin, no shorting equities, no crypto.
-- Never exceed 3 concurrent option positions or 1 new opening order per run.
-- Never exceed $260 per contract; never buy a contract with delta < 0.25 —
-  skip instead.
+- Never exceed this run's computed `N` concurrent option positions, `K` new
+  opening orders per run, `D` new opening orders per day, or `X` total open
+  exposure. Whatever the account value, never exceed 10 positions, 3 new
+  openings per run, 6 per day, or 5 contracts in one order.
+- Never pay more than `P` per contract (ask x 100), and never more than
+  $500 per contract whatever the account value; never buy a contract with
+  delta < 0.25 — skip instead.
 - Never trade options outside the regular session; never use `market` or
   `stop_market` order types on options.
 - Never call any tool at all when the market-hours gate indicates the
   market is closed — stop immediately instead.
 - Never open a position on an underlying with earnings scheduled before the
   contract's expiration.
-- Never let the settled cash reserve fall below $60.
+- Never let settled cash fall below this run's reserve `R` (never below $60).
 - Never place an order you did not first review with `review_option_order`;
   always use a fresh `ref_id` per logical order.
 - If technical-indicator, quote, or option-chain data is missing or looks
@@ -238,13 +291,18 @@ there is no pre-market/after-hours path for options at all.
 - Never touch any account other than `949029094`.
 
 ## Known risks (accepted, not eliminated)
-- Concentration: even fully funded to the ~$840–1,000 target, a single
-  contract can still be roughly a quarter to a third of total account value,
-  and can go to $0 at expiration. This is the direct consequence of using a
-  bigger per-contract budget with few positions rather than many small ones.
-  If account value drops below the funding target (e.g. after a loss), the
-  achievable position count shrinks accordingly — the position/order limits
-  above are hard caps, not targets to force.
+- Concentration and deployment: one position can be up to 15% of account
+  value (more on small accounts, where the $260 per-contract floor applies),
+  and up to 75% of account value can sit in long options at once. Long
+  options can go to $0 at expiration, so a bad stretch can take a large
+  share of the account. Limits shrink automatically as the account shrinks
+  — they are caps, not targets to force.
+- Correlation: with up to 10 positions, many can point the same way (e.g.
+  all calls on tech names) and move together; there is no sector or
+  direction cap.
+- Cash account, not margin: the pattern day trader rule does not apply, but
+  sale proceeds settle T+1, so a day with exits leaves less spendable cash
+  for new openings until the next day.
 - Weekend/holiday theta decay and overnight/weekend gap risk are not
   hedged — decisions and orders only happen during the regular session, so
   there is no resting stop-loss providing protection between runs.
