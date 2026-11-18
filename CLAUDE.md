@@ -100,7 +100,7 @@ this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
 | Limit | Formula | Absolute bounds |
 |---|---|---|
 | `R` cash reserve floor | max($60, 5% x E) | never below $60 |
-| `P` max ask x 100 for one contract | 15% x E | clamp to [$260, $500] |
+| `P` max ask x 100 for one contract | 15% x E | at least $260, no upper cap |
 | `B` max cost for one position | 15% x E | at least `P` (so 1 contract always fits) |
 | `N` max concurrent option positions | floor(E / $300) | at least 3, no upper cap |
 | `X` max total open option exposure | 75% x E | — |
@@ -112,8 +112,8 @@ this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
 |---|---|---|---|---|---|---|---|
 | $1,000 | $60 | $260 | $260 | 3 | $750 | 1 | 2 |
 | $2,000 | $100 | $300 | $300 | 6 | $1,500 | 2 | 4 |
-| $5,000 | $250 | $500 | $750 | 16 | $3,750 | 3 | 6 |
-| $10,000 | $500 | $500 | $1,500 | 33 | $7,500 | 3 | 6 |
+| $5,000 | $250 | $750 | $750 | 16 | $3,750 | 3 | 6 |
+| $10,000 | $500 | $1,500 | $1,500 | 33 | $7,500 | 3 | 6 |
 
 **How each limit is applied:**
 - Deployable cash for a new opening = live `buying_power.buying_power` from
@@ -275,9 +275,9 @@ there is no pre-market/after-hours path for options at all.
   exposure. Whatever the account value, never exceed 3 new openings per
   run, 6 per day, or 5 contracts in one order. There is no fixed cap on
   the number of positions: `N` comes from account value alone.
-- Never pay more than `P` per contract (ask x 100), and never more than
-  $500 per contract whatever the account value; never buy a contract with
-  delta < 0.25 — skip instead.
+- Never pay more than `P` per contract (ask x 100); there is no fixed
+  dollar ceiling beyond `P`. Never buy a contract with delta < 0.25 —
+  skip instead.
 - Never trade options outside the regular session; never use `market` or
   `stop_market` order types on options.
 - Never call any tool at all when the market-hours gate indicates the
