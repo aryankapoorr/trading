@@ -96,24 +96,25 @@ this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
   than 5%, treat account data as unreliable: run EXITs only, open nothing
   new this run, and log why.
 
-**Formulas (round dollar amounts down to the nearest dollar):**
-| Limit | Formula | Absolute bounds |
-|---|---|---|
-| `R` cash reserve floor | max($60, 5% x E) | never below $60 |
-| `P` max ask x 100 for one contract | 15% x E | at least $260, no upper cap |
-| `B` max cost for one position | 15% x E | at least `P` (so 1 contract always fits) |
-| `N` max concurrent option positions | floor(E / $300) | at least 3, no upper cap |
-| `X` max total open option exposure | 75% x E | — |
-| `K` max new opening orders per run | floor(N / 3) | clamp to [1, 3] |
-| `D` max new opening orders per trading day | 2 x K | never above 6 |
+**Formulas (every limit is a share of `E`; no fixed dollar or count caps;
+round dollar amounts down to the nearest dollar):**
+| Limit | Formula |
+|---|---|
+| `R` cash reserve floor | 5% x E |
+| `P` max ask x 100 for one contract | 15% x E |
+| `B` max cost for one position | 15% x E |
+| `N` max concurrent option positions | floor(E / $300), minimum 1 |
+| `X` max total open option exposure | 75% x E |
+| `K` max new opening orders per run | floor(N / 3), minimum 1 |
+| `D` max new opening orders per trading day | 2 x K |
 
 **Worked examples:**
 | Account value `E` | `R` | `P` | `B` | `N` | `X` | `K` | `D` |
 |---|---|---|---|---|---|---|---|
-| $1,000 | $60 | $260 | $260 | 3 | $750 | 1 | 2 |
+| $1,000 | $50 | $150 | $150 | 3 | $750 | 1 | 2 |
 | $2,000 | $100 | $300 | $300 | 6 | $1,500 | 2 | 4 |
-| $5,000 | $250 | $750 | $750 | 16 | $3,750 | 3 | 6 |
-| $10,000 | $500 | $1,500 | $1,500 | 33 | $7,500 | 3 | 6 |
+| $5,000 | $250 | $750 | $750 | 16 | $3,750 | 5 | 10 |
+| $10,000 | $500 | $1,500 | $1,500 | 33 | $7,500 | 11 | 22 |
 
 **How each limit is applied:**
 - Deployable cash for a new opening = live `buying_power.buying_power` from
@@ -122,9 +123,9 @@ this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
   quantity) must not exceed it.
 - Exposure: current `options_value` + the new order's total cost must be
   <= `X`. (Uses market value, not cost basis, so winners count in full.)
-- Quantity: buy `q` = floor(`B` / (ask x 100)) contracts, minimum 1, maximum
-  5, and further reduced until the cost fits the deployable-cash and
-  exposure checks above. If even 1 contract doesn't fit, skip.
+- Quantity: buy `q` = floor(`B` / (ask x 100)) contracts, further reduced
+  until the cost fits the deployable-cash and exposure checks above. If
+  even 1 contract doesn't fit (ask x 100 > `P`), skip.
 - Positions: open a new position only while open option positions < `N`.
 - Per run: at most `K` new opening orders. Before each one after the first,
   call `get_portfolio` + `get_option_positions` again and recompute every
@@ -210,7 +211,7 @@ HOLD otherwise.
    universe-level liquidity filters don't guarantee every individual OTM
    strike stays tight.
 5. Quantity: once the contract is chosen, size the order per the Quantity
-   rule in Sizing & limits (floor(`B` / (ask x 100)), 1–5 contracts, cut down
+   rule in Sizing & limits (floor(`B` / (ask x 100)) contracts, cut down
    to fit deployable cash and `X`).
 
 ## Session & order types
@@ -272,9 +273,8 @@ there is no pre-market/after-hours path for options at all.
 - No margin, no shorting equities, no crypto.
 - Never exceed this run's computed `N` concurrent option positions, `K` new
   opening orders per run, `D` new opening orders per day, or `X` total open
-  exposure. Whatever the account value, never exceed 3 new openings per
-  run, 6 per day, or 5 contracts in one order. There is no fixed cap on
-  the number of positions: `N` comes from account value alone.
+  exposure. These all come from account value alone; there are no fixed
+  count caps.
 - Never pay more than `P` per contract (ask x 100); there is no fixed
   dollar ceiling beyond `P`. Never buy a contract with delta < 0.25 —
   skip instead.
@@ -284,7 +284,7 @@ there is no pre-market/after-hours path for options at all.
   market is closed — stop immediately instead.
 - Never open a position on an underlying with earnings scheduled before the
   contract's expiration.
-- Never let settled cash fall below this run's reserve `R` (never below $60).
+- Never let settled cash fall below this run's reserve `R`.
 - Never place an order you did not first review with `review_option_order`;
   always use a fresh `ref_id` per logical order.
 - If technical-indicator, quote, or option-chain data is missing or looks
@@ -293,7 +293,7 @@ there is no pre-market/after-hours path for options at all.
 
 ## Known risks (accepted, not eliminated)
 - Concentration and deployment: one position can be up to 15% of account
-  value (more on small accounts, where the $260 per-contract floor applies),
+  value,
   and up to 75% of account value can sit in long options at once. Long
   options can go to $0 at expiration, so a bad stretch can take a large
   share of the account. Limits shrink automatically as the account shrinks

@@ -25,13 +25,12 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
   liquidity backstop.
 - Signals computed on the underlying via SMA10/SMA30/RSI14 (mirrored bands
   for calls vs. puts).
-- Limits scale with live account value `E` each run (full formulas in
-  CLAUDE.md, Sizing & limits): per-contract ceiling 15% of `E` (at
-  least $260, no upper cap), position size up to 15% of `E` (1–5 contracts), max positions
-  `E` / $300 (at least 3, no upper cap), up to 75% of `E` in open options, cash reserve
-  max($60, 5% of `E`), new openings per run `positions` / 3 (1–3) and twice
-  that per day. At ~$2,000: $300 per contract, 6 positions, 2 openings per
-  run, 4 per day, $100 reserve. Contracts target moderate delta
+- Limits scale with live account value `E` each run, with no fixed dollar
+  or count caps (full formulas in CLAUDE.md, Sizing & limits): per-contract
+  ceiling and position size 15% of `E`, max positions `E` / $300, up to 75%
+  of `E` in open options, cash reserve 5% of `E`, new openings per run
+  positions / 3 and twice that per day. At ~$2,000: $300 per contract, 6
+  positions, 2 openings per run, 4 per day, $100 reserve. Contracts target moderate delta
   (0.35–0.55), ~21–31 days to expiration.
 - Exit on signal reversal, a 7-day DTE time-stop, or an earnings date within
   5 days of expiration.
