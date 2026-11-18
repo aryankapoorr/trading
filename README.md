@@ -25,11 +25,13 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
   liquidity backstop.
 - Signals computed on the underlying via SMA10/SMA30/RSI14 (mirrored bands
   for calls vs. puts).
-- Target spend ~$150–250 per contract (hard ceiling $260), targeting
-  moderate delta (0.35–0.55), ~21–31 days to expiration. Max 3 concurrent
-  positions, max 1 new opening order per run. Funding target: at least
-  ~$840 (3 x $260 ceiling + $60 reserve), ideally ~$900–1,000 for headroom —
-  below that, expect fewer than 3 positions to be achievable at once.
+- Limits scale with live account value `E` each run, with no fixed dollar
+  or count caps (full formulas in CLAUDE.md, Sizing & limits): per-contract
+  ceiling and position size 15% of `E`, max positions `E` / $300, up to 75%
+  of `E` in open options, cash reserve 5% of `E`, new openings per run
+  positions / 3 and twice that per day. At ~$2,000: $300 per contract, 6
+  positions, 2 openings per run, 4 per day, $100 reserve. Contracts target moderate delta
+  (0.35–0.55), ~21–31 days to expiration.
 - Exit on signal reversal, a 7-day DTE time-stop, or an earnings date within
   5 days of expiration.
 ## Session & order types
