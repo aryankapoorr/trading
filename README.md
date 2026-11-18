@@ -28,7 +28,7 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
 - Limits scale with live account value `E` each run (full formulas in
   CLAUDE.md, Sizing & limits): per-contract ceiling 15% of `E` (clamped
   $260–$500), position size up to 15% of `E` (1–5 contracts), max positions
-  `E` / $300 (3–10), up to 75% of `E` in open options, cash reserve
+  `E` / $300 (at least 3, no upper cap), up to 75% of `E` in open options, cash reserve
   max($60, 5% of `E`), new openings per run `positions` / 3 (1–3) and twice
   that per day. At ~$2,000: $300 per contract, 6 positions, 2 openings per
   run, 4 per day, $100 reserve. Contracts target moderate delta

@@ -102,7 +102,7 @@ this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
 | `R` cash reserve floor | max($60, 5% x E) | never below $60 |
 | `P` max ask x 100 for one contract | 15% x E | clamp to [$260, $500] |
 | `B` max cost for one position | 15% x E | at least `P` (so 1 contract always fits) |
-| `N` max concurrent option positions | floor(E / $300) | clamp to [3, 10] |
+| `N` max concurrent option positions | floor(E / $300) | at least 3, no upper cap |
 | `X` max total open option exposure | 75% x E | — |
 | `K` max new opening orders per run | floor(N / 3) | clamp to [1, 3] |
 | `D` max new opening orders per trading day | 2 x K | never above 6 |
@@ -112,8 +112,8 @@ this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
 |---|---|---|---|---|---|---|---|
 | $1,000 | $60 | $260 | $260 | 3 | $750 | 1 | 2 |
 | $2,000 | $100 | $300 | $300 | 6 | $1,500 | 2 | 4 |
-| $5,000 | $250 | $500 | $750 | 10 | $3,750 | 3 | 6 |
-| $10,000 | $500 | $500 | $1,500 | 10 | $7,500 | 3 | 6 |
+| $5,000 | $250 | $500 | $750 | 16 | $3,750 | 3 | 6 |
+| $10,000 | $500 | $500 | $1,500 | 33 | $7,500 | 3 | 6 |
 
 **How each limit is applied:**
 - Deployable cash for a new opening = live `buying_power.buying_power` from
@@ -272,8 +272,9 @@ there is no pre-market/after-hours path for options at all.
 - No margin, no shorting equities, no crypto.
 - Never exceed this run's computed `N` concurrent option positions, `K` new
   opening orders per run, `D` new opening orders per day, or `X` total open
-  exposure. Whatever the account value, never exceed 10 positions, 3 new
-  openings per run, 6 per day, or 5 contracts in one order.
+  exposure. Whatever the account value, never exceed 3 new openings per
+  run, 6 per day, or 5 contracts in one order. There is no fixed cap on
+  the number of positions: `N` comes from account value alone.
 - Never pay more than `P` per contract (ask x 100), and never more than
   $500 per contract whatever the account value; never buy a contract with
   delta < 0.25 — skip instead.
@@ -297,7 +298,7 @@ there is no pre-market/after-hours path for options at all.
   options can go to $0 at expiration, so a bad stretch can take a large
   share of the account. Limits shrink automatically as the account shrinks
   — they are caps, not targets to force.
-- Correlation: with up to 10 positions, many can point the same way (e.g.
+- Correlation: with many positions open, several can point the same way (e.g.
   all calls on tech names) and move together; there is no sector or
   direction cap.
 - Cash account, not margin: the pattern day trader rule does not apply, but
