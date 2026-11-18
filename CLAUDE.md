@@ -125,7 +125,7 @@ round dollar amounts down to the nearest dollar):**
   <= `X`. (Uses market value, not cost basis, so winners count in full.)
 - Quantity: buy `q` = floor(`B` / (ask x 100)) contracts, further reduced
   until the cost fits the deployable-cash and exposure checks above. If
-  even 1 contract doesn't fit (ask x 100 > `P`), skip.
+  even 1 contract doesn't fit, skip.
 - Positions: open a new position only while open option positions < `N`.
 - Per run: at most `K` new opening orders. Before each one after the first,
   call `get_portfolio` + `get_option_positions` again and recompute every
