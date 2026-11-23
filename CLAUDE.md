@@ -87,7 +87,7 @@ scans).
 All limits below are computed from the live account value at the start of
 every run, and recomputed (fresh `get_portfolio`) before every new opening
 order. These computed values are THE limits referenced everywhere else in
-this file as `E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`.
+this file as `E`, `R`, `P`, `B`, `N`, `K`, `D`.
 
 **Inputs (from `get_portfolio` for `949029094`):**
 - `E` = `total_value` (cash + market value of open options).
@@ -104,27 +104,24 @@ round dollar amounts down to the nearest dollar):**
 | `P` max ask x 100 for one contract | 15% x E |
 | `B` max cost for one position | 15% x E |
 | `N` max concurrent option positions | floor(E / $300), minimum 1 |
-| `X` max total open option exposure | 75% x E |
 | `K` max new opening orders per run | floor(N / 3), minimum 1 |
 | `D` max new opening orders per trading day | 2 x K |
 
 **Worked examples:**
-| Account value `E` | `R` | `P` | `B` | `N` | `X` | `K` | `D` |
-|---|---|---|---|---|---|---|---|
-| $1,000 | $50 | $150 | $150 | 3 | $750 | 1 | 2 |
-| $2,000 | $100 | $300 | $300 | 6 | $1,500 | 2 | 4 |
-| $5,000 | $250 | $750 | $750 | 16 | $3,750 | 5 | 10 |
-| $10,000 | $500 | $1,500 | $1,500 | 33 | $7,500 | 11 | 22 |
+| Account value `E` | `R` | `P` | `B` | `N` | `K` | `D` |
+|---|---|---|---|---|---|---|
+| $1,000 | $50 | $150 | $150 | 3 | 1 | 2 |
+| $2,000 | $100 | $300 | $300 | 6 | 2 | 4 |
+| $5,000 | $250 | $750 | $750 | 16 | 5 | 10 |
+| $10,000 | $500 | $1,500 | $1,500 | 33 | 11 | 22 |
 
 **How each limit is applied:**
 - Deployable cash for a new opening = live `buying_power.buying_power` from
   `get_portfolio` (settled, spendable; excludes unsettled sale proceeds on
   this cash account) minus `R`. A new order's total cost (ask x 100 x
   quantity) must not exceed it.
-- Exposure: current `options_value` + the new order's total cost must be
-  <= `X`. (Uses market value, not cost basis, so winners count in full.)
 - Quantity: buy `q` = floor(`B` / (ask x 100)) contracts, further reduced
-  until the cost fits the deployable-cash and exposure checks above. If
+  until the cost fits the deployable-cash check above. If
   even 1 contract doesn't fit, skip.
 - Positions: open a new position only while open option positions < `N`.
 - Per run: at most `K` new opening orders. Before each one after the first,
@@ -153,8 +150,8 @@ ENTRY — BUY_CALL (open a new long call) — ALL must be true:
 3. 45 <= RSI14 <= 70 (momentum present, not extreme).
 4. Passes the earnings guard (below).
 5. Open option positions < `N`, new openings this run < `K`, new openings
-   today < `D`, and the order fits the deployable-cash and exposure (`X`)
-   checks in Sizing & limits.
+   today < `D`, and the order fits the deployable-cash check in Sizing &
+   limits.
 6. A qualifying contract exists under the strike/expiration rules below —
    otherwise skip this candidate.
 
@@ -212,7 +209,7 @@ HOLD otherwise.
    strike stays tight.
 5. Quantity: once the contract is chosen, size the order per the Quantity
    rule in Sizing & limits (floor(`B` / (ask x 100)) contracts, cut down
-   to fit deployable cash and `X`).
+   to fit deployable cash).
 
 ## Session & order types
 Options on individual stocks/ETFs do NOT support extended-hours trading
@@ -237,7 +234,7 @@ there is no pre-market/after-hours path for options at all.
 1. Call `get_accounts` + `get_portfolio` + `get_option_positions` (+
    `get_equity_positions`, expected empty) for `949029094` to learn settled
    cash and current option holdings. Compute and print this run's limits
-   (`E`, `R`, `P`, `B`, `N`, `X`, `K`, `D`) per Sizing & limits.
+   (`E`, `R`, `P`, `B`, `N`, `K`, `D`) per Sizing & limits.
 2. Call `get_option_orders` to log any straggler order status from prior
    runs, and count today's buy-to-open orders against `D`.
 3. Universe discovery per the Universe section above.
@@ -272,9 +269,10 @@ there is no pre-market/after-hours path for options at all.
   hold — no covered calls, no cash-secured puts, no sell-to-open, ever.
 - No margin, no shorting equities, no crypto.
 - Never exceed this run's computed `N` concurrent option positions, `K` new
-  opening orders per run, `D` new opening orders per day, or `X` total open
-  exposure. These all come from account value alone; there are no fixed
-  count caps.
+  opening orders per run, or `D` new opening orders per day. These all come
+  from account value alone; there are no fixed count caps and no cap on
+  total open option exposure (the cash reserve `R` is the deployment
+  guard).
 - Never pay more than `P` per contract (ask x 100); there is no fixed
   dollar ceiling beyond `P`. Never buy a contract with delta < 0.25 —
   skip instead.
@@ -293,8 +291,8 @@ there is no pre-market/after-hours path for options at all.
 
 ## Known risks (accepted, not eliminated)
 - Concentration and deployment: one position can be up to 15% of account
-  value,
-  and up to 75% of account value can sit in long options at once. Long
+  value, and there is no cap on total option exposure, so up to all but the
+  5% cash reserve can sit in long options at once (more as winners grow). Long
   options can go to $0 at expiration, so a bad stretch can take a large
   share of the account. Limits shrink automatically as the account shrinks
   — they are caps, not targets to force.
