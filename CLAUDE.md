@@ -11,6 +11,11 @@ This runs UNATTENDED in the cloud on a schedule — no human is available to
 answer questions or approve steps. Never pause to ask. Either follow the
 rules and act, or stop per the guards below.
 
+**Weekly review runs are different.** If the routine's prompt says this is
+the weekly review run, do not follow anything below this paragraph (not even
+the market-hours gate): follow `review/WEEKLY_REVIEW.md` instead. A weekly
+review run never reviews, places or cancels an order.
+
 ## Data source
 The **only** external dependency is the Robinhood Trading MCP connector
 (`get_accounts`, `get_portfolio`, `get_scans`/`create_scan`/`run_scan`,
@@ -24,6 +29,8 @@ If the Robinhood connector is unreachable or returns errors on the account/
 portfolio calls in step 1 of the required procedure, do nothing this run,
 log the failure, and stop — do not fall back to any other data source or
 guess at account state.
+The trade journal (see Trade journal) uses only local git and python. It is
+a record, not a data source, and never feeds a decision.
 
 ## Market-hours gate (check FIRST, before calling any tool)
 Before calling any tool at all — including the account checks below —
@@ -228,6 +235,25 @@ there is no pre-market/after-hours path for options at all.
   regular session, by design, to avoid unnecessary token/API usage on a run
   that could never place an order anyway.
 
+## Trade journal (record-keeping only)
+Every order this run places is recorded in `journal/trades.csv` so the
+weekly review can learn from real entries and exits. The journal never
+changes what this run does: do not read it, or any past performance, to
+make or skip a decision. Rule changes arrive only as merged edits to this
+file.
+- Record the **live** values you actually used: for an entry, the
+  underlying price, SMA10, SMA30 and RSI14 from step 4, the contract's delta
+  and IV from `get_option_quotes`, the ask you paid, and the order id; for an
+  exit, the bid, the underlying price, SMA10, RSI14, the order id, and which
+  EXIT trigger fired (`signal_exit`, `dte_time_stop` or
+  `earnings_proximity`).
+- `rules_version` = `git rev-parse --short HEAD` of this checkout.
+- The journal lives on branch `claude/trade-journal`; `journal/sync.sh`
+  handles it. Never push to `main`.
+- Journaling happens after all orders. If any journal step fails, log the
+  error and finish the run normally; a journal failure never blocks or
+  undoes a trade.
+
 ## Required procedure each run
 0. Market-hours gate (above). If it fails, stop here — do not proceed to
    step 1 or call any tool.
@@ -250,17 +276,26 @@ there is no pre-market/after-hours path for options at all.
    qualifies.
 8. For every EXIT-triggered position: call `get_option_quotes`, then
    `review_option_order` (sell to close, limit at bid), print the review,
-   then `place_option_order` with a fresh `ref_id` (UUID).
+   then `place_option_order` with a fresh `ref_id` (UUID). Note the order id
+   and the values for the journal (see Trade journal).
 9. For up to `K` surviving new-entry candidates, one at a time, in the order
    they appear in the step 5 table: refresh `get_portfolio` +
    `get_option_positions` and recompute the limits (skip the refresh for
    the first one, step 1 is fresh), confirm the candidate still fits every
    limit, call `review_option_order` (buy to open, limit at ask, quantity
    per Sizing & limits), print the review, then `place_option_order` with a
-   fresh `ref_id`. Stop early once any limit is reached. (The market-hours
-   gate already guarantees the session is open by this point.)
-10. Summarize: orders placed, candidates/positions skipped and why,
-    end-of-run cash, open positions with remaining DTE.
+   fresh `ref_id`. Note the order id and the values for the journal. Stop
+   early once any limit is reached. (The market-hours gate already
+   guarantees the session is open by this point.)
+10. Journal (only if steps 8–9 placed at least one order): run
+    `journal/sync.sh pull` (it prints the journal path), then for each
+    order run `python3 journal/record.py open|close --file <path> --json
+    '{...}'` (field names are in `journal/record.py`), then
+    `journal/sync.sh push "Journal: <run time> <orders>"`. On any error, log
+    it and go on to step 11.
+11. Summarize: orders placed, candidates/positions skipped and why,
+    end-of-run cash, open positions with remaining DTE, and whether the
+    journal was updated.
 
 ## Hard don'ts
 - No multi-leg/spread orders (the tools are hard-capped to a single leg
@@ -288,6 +323,9 @@ there is no pre-market/after-hours path for options at all.
 - If technical-indicator, quote, or option-chain data is missing or looks
   wrong for a candidate, SKIP that candidate and log why.
 - Never touch any account other than `949029094`.
+- Never let the journal or past results change a decision in a trading run,
+  and never edit this file or push to `main` during one. The only writes a
+  trading run makes to the repo are journal rows on `claude/trade-journal`.
 
 ## Known risks (accepted, not eliminated)
 - Concentration and deployment: one position can be up to 15% of account
