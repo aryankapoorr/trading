@@ -44,6 +44,19 @@ run via Claude Code Routines (cloud-scheduled, no local machine required).
   useful to compute, so this avoids burning tokens/API calls on a run that
   couldn't act.
 
+## Trade journal & weekly review
+- Every trading run that places an order records it in
+  `journal/trades.csv` (live signal values at entry, exit trigger, P&L) on
+  the data branch `claude/trade-journal`. The journal is never read to make
+  trading decisions.
+- A separate weekly routine follows `review/WEEKLY_REVIEW.md`: it reconciles
+  the journal with Robinhood (read-only), runs `journal/analyze.py`, writes a
+  readout to `review/log/`, and proposes at most one rule change as a pull
+  request, only when the sample clears a stated evidence bar. Nothing
+  changes until the owner merges.
+- The journal starts with a backfill of every trade since Jul 27, 2026; see
+  `journal/readout-2026-11-25.md`.
+
 ## Audit trail
 - Each run's full output (decision table + earnings checks + order reviews) is
   visible in the routine's run history on claude.ai.
